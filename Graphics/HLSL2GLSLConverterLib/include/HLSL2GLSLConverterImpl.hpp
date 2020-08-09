@@ -342,7 +342,7 @@ private:
                                        const std::vector<SamplerHashType>& SamplersHash,
                                        ObjectsTypeHashType&                Objects,
                                        const char*                         SamplerSuffix,
-                                       Uint32&                             ImageBinding);
+                                       std::array<Uint32, 2>&              ImageBinding);
 
         bool ProcessObjectMethod(TokenListType::iterator&       Token,
                                  const TokenListType::iterator& ScopeStart,

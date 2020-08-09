@@ -42,18 +42,22 @@
 #define float4 vec4
 #define float3 vec3
 #define float2 vec2
+#define float1 float
 
 #define int4 ivec4
 #define int3 ivec3
 #define int2 ivec2
+#define int1 int
 
 #define uint4 uvec4
 #define uint3 uvec3
 #define uint2 uvec2
+#define uint1 uint
 
 #define bool4 bvec4
 #define bool3 bvec3
 #define bool2 bvec2
+#define bool1 bool
 
 // OpenGL matrices in GLSL are always as column-major 
 // (this is not related to how they are stored)
@@ -1257,11 +1261,13 @@ void _GetGLTessLevelInner(out float InnerLevel)
 // ---------------------------------- Compute shader ----------------------------------
 #ifdef COMPUTE_SHADER
 
-#define _GET_GL_GLOBAL_INVOCATION_ID(Type, InvocId)InvocId=Type(gl_GlobalInvocationID)
-#define _GET_GL_WORK_GROUP_ID(Type, GroupId)GroupId=Type(gl_WorkGroupID)
-#define _GET_GL_LOCAL_INVOCATION_ID(Type, InvocId)InvocId=Type(gl_LocalInvocationID)
-#define _GET_GL_LOCAL_INVOCATION_INDEX(Type, InvocInd)InvocInd=Type(gl_LocalInvocationIndex)
+#define _GET_GL_GLOBAL_INVOCATION_ID    gl_GlobalInvocationID
+#define _GET_GL_WORK_GROUP_ID           gl_WorkGroupID
+#define _GET_GL_LOCAL_INVOCATION_ID     gl_LocalInvocationID
+#define _GET_GL_LOCAL_INVOCATION_INDEX  gl_LocalInvocationIndex
 
 #endif
 
 #endif // _GLSL_DEFINITIONS_
+
+//#line 1

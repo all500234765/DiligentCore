@@ -356,6 +356,7 @@
 #include "pch.h"
 #include <unordered_set>
 #include <string>
+#include <array>
 
 #include "HLSL2GLSLConverterImpl.hpp"
 #include "ShaderBase.hpp"
@@ -1402,6 +1403,9 @@ void HLSL2GLSLConverterImpl::ConversionStream::ProcessConstantBuffer(TokenListTy
 {
     VERIFY_EXPR(Token->Type == TokenType::kw_cbuffer);
 
+    std::string binding = "0";
+    std::string* Tok = &Token->Literal;
+
     // Replace "cbuffer" with "uniform"
     Token->Literal = "uniform";
     ++Token;
@@ -1424,12 +1428,18 @@ void HLSL2GLSLConverterImpl::ConversionStream::ProcessConstantBuffer(TokenListTy
         while (Token != m_Tokens.end() && Token->Type != TokenType::OpenBrace)
         {
             auto CurrToken = Token;
+            if( Token->Literal[0] == 'b' ) {
+                binding = Token->Literal.substr(1).c_str();
+            }
+
             ++Token;
             m_Tokens.erase(CurrToken);
         }
         // cbuffer CBufferName {
         //                     ^
     }
+    
+    *Tok = "layout(binding=" + binding + ") uniform";
 
     while (Token != m_Tokens.end() && Token->Type != TokenType::OpenBrace)
         ++Token;
@@ -1800,7 +1810,7 @@ void HLSL2GLSLConverterImpl::ConversionStream::ProcessTextureDeclaration(TokenLi
                                                                          const std::vector<SamplerHashType>& Samplers,
                                                                          ObjectsTypeHashType&                Objects,
                                                                          const char*                         SamplerSuffix,
-                                                                         Uint32&                             ImageBinding)
+                                                                         std::array<Uint32, 2>&              ImageBinding)
 {
     auto TexDeclToken = Token;
     auto TextureDim   = TexDeclToken->Type;
@@ -1825,6 +1835,7 @@ void HLSL2GLSLConverterImpl::ConversionStream::ProcessTextureDeclaration(TokenLi
     String GLSLSampler;
     String LayoutQualifier;
     Uint32 NumComponents = 0;
+    TokenType t = TokenType::kw_float4;
     if (Token->Literal == "<")
     {
         // Fix token type
@@ -1866,6 +1877,8 @@ void HLSL2GLSLConverterImpl::ConversionStream::ProcessTextureDeclaration(TokenLi
                                                               "Only the following texture element types are supported: float[1,2,3,4], int[1,2,3,4], uint[1,2,3,4]");
         }
         VERIFY_PARSER_STATE(Token, NumComponents >= 1 && NumComponents <= 4, "Between 1 and 4 components expected, ", NumComponents, " deduced");
+        
+        t = Token->Type;
 
         ++Token;
         CHECK_EOF();
@@ -1897,23 +1910,49 @@ void HLSL2GLSLConverterImpl::ConversionStream::ProcessTextureDeclaration(TokenLi
         VERIFY_EXPR(Token->Type == TokenType::ComparisonOp);
         Token->Type = TokenType::ClosingAngleBracket;
 
-        if (IsRWTexture)
+        //if (IsRWTexture)
         {
             // RWTexture2D<float /* format = r32f */ >
             //                                       ^
-            ParseImageFormat(Token->Delimiter, ImgFormat);
-            if (ImgFormat.length() == 0)
-            {
-                // RWTexture2D</* format = r32f */ float >
-                //                                 ^
-                //                            TexFmtToken
-                ParseImageFormat(TexFmtToken->Delimiter, ImgFormat);
+            //ParseImageFormat(Token->Delimiter, ImgFormat);
+            //if (ImgFormat.length() == 0)
+            //{
+            //    // RWTexture2D</* format = r32f */ float >
+            //    //                                 ^
+            //    //                            TexFmtToken
+            //    ParseImageFormat(TexFmtToken->Delimiter, ImgFormat);
+            //}
+
+            switch( t ) {
+                case TokenType::kw_float1: 
+                case TokenType::kw_float : ImgFormat = "r32f";    break;
+                case TokenType::kw_float2: ImgFormat = "rg32f";   break;
+                case TokenType::kw_float3: ImgFormat = "rgb32f";  break;
+                case TokenType::kw_float4: ImgFormat = "rgba32f"; break;
+                    
+                case TokenType::kw_int1: 
+                case TokenType::kw_int : ImgFormat = "r32i";    break;
+                case TokenType::kw_int2: ImgFormat = "rg32i";   break;
+                case TokenType::kw_int3: ImgFormat = "rgb32i";  break;
+                case TokenType::kw_int4: ImgFormat = "rgba32i"; break;
+                    
+                case TokenType::kw_uint1: 
+                case TokenType::kw_uint : ImgFormat = "r32ui";    break;
+                case TokenType::kw_uint2: ImgFormat = "rg32ui";   break;
+                case TokenType::kw_uint3: ImgFormat = "rgb32ui";  break;
+                case TokenType::kw_uint4: ImgFormat = "rgba32ui"; break;
             }
 
             if (ImgFormat.length() != 0)
             {
                 std::stringstream ss;
-                ss << "layout(" << ImgFormat << ", binding=" << ImageBinding++ << ")";
+                ss << "layout(";
+                
+                if( IsRWTexture ) {
+                    ss << "" << ImgFormat << ", ";
+                }
+                
+                ss << "binding=" << ImageBinding[IsRWTexture]++ << ") ";
                 LayoutQualifier = ss.str();
             }
         }
@@ -3484,7 +3523,7 @@ void HLSL2GLSLConverterImpl::ConversionStream::ProcessComputeShaderArguments(Tok
                     {
                         LOG_ERROR_AND_THROW("Unexpected input semantic \"", Param.Semantic, "\". The only allowed semantics for the compute shader inputs are \"ATTRIB*\", \"SV_VertexID\", and \"SV_InstanceID\".");
                     }
-                    PrologueSS << "    " << Getter << '(' << Param.Type << "," << FullParamName << ");\n";
+                    PrologueSS << "    " << FullParamName << " = " << Param.Type << "(" << Getter << ");\n";
                 } //
             );
         }
@@ -4691,8 +4730,8 @@ String HLSL2GLSLConverterImpl::ConversionStream::Convert(const Char* EntryPoint,
     m_bUseInOutLocationQualifiers = UseInOutLocationQualifiers;
     TokenListType TokensCopy(m_bPreserveTokens ? m_Tokens : TokenListType());
 
-    Uint32 ShaderStorageBlockBinding = 0;
-    Uint32 ImageBinding              = 0;
+    Uint32 ShaderStorageBlockBinding   = 0;
+    std::array<Uint32, 2> ImageBinding = { 0, 0 };
 
     std::unordered_map<String, bool> SamplersHash;
 
@@ -4922,8 +4961,22 @@ String HLSL2GLSLConverterImpl::ConversionStream::Convert(const Char* EntryPoint,
         m_Objects.clear();
     }
 
-    if (IncludeDefintions)
-        GLSLSource.insert(0, g_GLSLDefinitions);
+    if( IncludeDefintions ) {
+        std::string str = "#version 450\n";
+        str.reserve(strlen("#version 450\n#define GEOMETRY_SHADER 1\n"));
+
+        switch( ShaderType ) {
+            case SHADER_TYPE_VERTEX  : str += ("#define VERTEX_SHADER 1\n");   break;
+            case SHADER_TYPE_HULL    : str += ("#define HULL_SHADER 1\n");     break;
+            case SHADER_TYPE_DOMAIN  : str += ("#define DOMAIN_SHADER 1\n");   break;
+            case SHADER_TYPE_GEOMETRY: str += ("#define GEOMETRY_SHADER 1\n"); break;
+            case SHADER_TYPE_PIXEL   : str += ("#define PIXEL_SHADER 1\n");    break;
+            case SHADER_TYPE_COMPUTE : str += ("#define COMPUTE_SHADER 1\n");  break;
+        }
+
+
+        GLSLSource.insert(0, str + g_GLSLDefinitions);
+    }
 
     return GLSLSource;
 }
