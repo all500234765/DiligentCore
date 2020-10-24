@@ -2316,6 +2316,19 @@ void HLSL2GLSLConverterImpl::ConversionStream::RemoveFlowControlAttribute(TokenL
         return;
 
     --PrevToken;
+    // [ branch(...) ] if ( ...
+    //             ^
+    if( PrevToken == m_Tokens.begin() || PrevToken->Type != TokenType::ClosingBracket ) {
+        ++PrevToken;
+    } else {
+        while( PrevToken != m_Tokens.begin() && PrevToken->Type != TokenType::OpenBracket )
+            --PrevToken;
+
+        if( PrevToken->Type != TokenType::OpenBracket )
+            return;
+    }
+
+    --PrevToken;
     // [ branch ] if ( ...
     //   ^
     if (PrevToken == m_Tokens.begin() || PrevToken->Type != TokenType::Identifier)
@@ -4963,14 +4976,15 @@ String HLSL2GLSLConverterImpl::ConversionStream::Convert(const Char* EntryPoint,
 
     if( IncludeDefintions ) {
         std::string str = "#version 450\n";
-        str.reserve(strlen("#version 450\n#define GEOMETRY_SHADER 1\n"));
+        str.reserve(strlen("#version 450\n#define GEOMETRY_SHADER 1\n#define PIXEL_SHADER 1\n"));
 
         switch( ShaderType ) {
             case SHADER_TYPE_VERTEX  : str += ("#define VERTEX_SHADER 1\n");   break;
             case SHADER_TYPE_HULL    : str += ("#define HULL_SHADER 1\n");     break;
             case SHADER_TYPE_DOMAIN  : str += ("#define DOMAIN_SHADER 1\n");   break;
             case SHADER_TYPE_GEOMETRY: str += ("#define GEOMETRY_SHADER 1\n"); break;
-            case SHADER_TYPE_PIXEL   : str += ("#define PIXEL_SHADER 1\n");    break;
+            case SHADER_TYPE_PIXEL   : str += ("#define FRAGMENT_SHADER 1\n");
+                                       str += ("#define PIXEL_SHADER 1\n");    break;
             case SHADER_TYPE_COMPUTE : str += ("#define COMPUTE_SHADER 1\n");  break;
         }
 
